@@ -1,0 +1,13 @@
+@wallet_HostAddress = http://localhost:7265
+@walletId = 4f5b8a49-6c3e-448c-a6d6-7e54d55f77ef
+@amount = 200
+
+GET {{wallet_HostAddress}}/{{walletId}}
+Accept: application/json
+
+###
+
+GET {{wallet_HostAddress}}/{{walletId}}/{{amount}}
+Accept: application/json
+
+###
