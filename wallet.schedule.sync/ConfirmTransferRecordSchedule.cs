@@ -49,7 +49,7 @@ namespace wallet.schedule.sync
                 else
                     await _redis.ListRightPopLeftPushAsync(
                         $"{WalletRedisKey.TransferRecordConfirm}:{{{slot}}}",
-                        $"{WalletRedisKey.TransferRecord}:{{{slot}}}");
+                        $"{WalletRedisKey.TransferRecordRetry}:{{{slot}}}");
             }
         }
 

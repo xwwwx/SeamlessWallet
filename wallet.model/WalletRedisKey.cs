@@ -6,5 +6,7 @@
         public static string TransferRecord => "TransferRecord";
 
         public static string TransferRecordConfirm => "TransferRecordConfirm";
+
+        public static string TransferRecordRetry => "TransferRecordRetry";
     }
 }

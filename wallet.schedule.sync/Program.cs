@@ -32,6 +32,7 @@ builder.Services.AddScheduler();
 
 builder.Services.AddSingleton<SyncTransferRecordSchedule>();
 builder.Services.AddSingleton<ConfirmTransferRecordSchedule>();
+builder.Services.AddSingleton<ProcessRetryTransferRecordSchedule>();
 
 var host = builder.Build();
 
@@ -41,6 +42,8 @@ host.Services.UseScheduler(scheduler =>
         .PreventOverlapping(nameof(SyncTransferRecordSchedule)).RunOnceAtStart();
     scheduler.Schedule<ConfirmTransferRecordSchedule>().EverySecond()
         .PreventOverlapping(nameof(ConfirmTransferRecordSchedule)).RunOnceAtStart();
+    scheduler.Schedule<ProcessRetryTransferRecordSchedule>().EverySeconds(3)
+        .PreventOverlapping(nameof(ProcessRetryTransferRecordSchedule)).RunOnceAtStart();
 }).LogScheduledTaskProgress(host.Services.GetRequiredService<ILogger<IScheduler>>());
 
 await host.RunAsync();
