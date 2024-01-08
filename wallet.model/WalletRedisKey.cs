@@ -8,5 +8,6 @@
         public static string TransferRecordConfirm => "TransferRecordConfirm";
 
         public static string TransferRecordRetry => "TransferRecordRetry";
+        public static string TransferRecordDatabaseCache => "TransferRecordDatabaseCache";
     }
 }

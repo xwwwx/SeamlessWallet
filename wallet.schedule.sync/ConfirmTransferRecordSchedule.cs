@@ -43,8 +43,16 @@ namespace wallet.schedule.sync
 
                 if (await CheckRecordExistsAsync(bsonTransferRecord))
                 {
-                    await _redis.ListRightPopAsync($"{WalletRedisKey.TransferRecordConfirm}:{{{slot}}}");
-                    await _redis.KeyDeleteAsync($"{WalletRedisKey.TransferRecord}:{transferRecord.TransferRecordId}");
+                    var tasks = new List<Task>();
+                    var session = _redis.CreateTransaction();
+                    tasks.Add(session.ListRightPopAsync($"{WalletRedisKey.TransferRecordConfirm}:{{{slot}}}"));
+                    tasks.Add(session.KeyDeleteAsync($"{WalletRedisKey.TransferRecord}:{transferRecord.TransferRecordId}"));
+                    tasks.Add(session.StringSetAsync(
+                        $"{WalletRedisKey.TransferRecordDatabaseCache}:{transferRecord.TransferRecordId}"
+                        , JsonSerializer.Serialize(transferRecord)
+                        , TimeSpan.FromMinutes(10)));
+                    if (!await session.ExecuteAsync()) throw new Exception("Redis Execute Fail!");
+                    await Task.WhenAll(tasks);
                 }
                 else
                     await _redis.ListRightPopLeftPushAsync(

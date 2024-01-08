@@ -64,5 +64,23 @@ namespace wallet.Controllers
                 }
             };
         }
+
+        [HttpGet("TransferRecord")]
+        public async Task<TransferRecordResponse> TransferRecordAsync([FromQuery] Guid transferRecordId)
+        {
+            var transferRecord = await walletService.GetTransferRecord(transferRecordId);
+            return new()
+            {
+                Data = new()
+                {
+                    TransferRecordId = transferRecord.TransferRecordId,
+                    WalletId = transferRecord.WalletId,
+                    AfterAmount = transferRecord.AfterAmount,
+                    BeforeAmount = transferRecord.BeforeAmount,
+                    Amount = transferRecord.Amount,
+                    CreatedTime = transferRecord.CreatedTime
+                }
+            };
+        }
     }
 }

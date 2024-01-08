@@ -40,14 +40,14 @@ namespace wallet
             };
             newWallet.ModifiedTime = DateTime.Now;
 
+            var tasks = new List<Task>();
             var tran = _redis.CreateTransaction();
-
-            _ = tran.StringSetAsync($"{WalletRedisKey.Wallet}:{newWallet.WalletId}:{{{newWallet.GetWalletIdSlot()}}}", JsonSerializer.Serialize(newWallet));
-            _ = tran.ListLeftPushAsync($"{WalletRedisKey.TransferRecord}:{{{newWallet.GetWalletIdSlot()}}}",
-                JsonSerializer.Serialize(transferRecord));
-
+            tasks.Add(tran.StringSetAsync($"{WalletRedisKey.Wallet}:{newWallet.WalletId}:{{{newWallet.GetWalletIdSlot()}}}", JsonSerializer.Serialize(newWallet)));
+            tasks.Add(tran.ListLeftPushAsync($"{WalletRedisKey.TransferRecord}:{{{newWallet.GetWalletIdSlot()}}}",
+                JsonSerializer.Serialize(transferRecord)));
             var result = await tran.ExecuteAsync();
             if (!result) throw new Exception("Execute Fail!");
+            await Task.WhenAll(tasks);
 
             return newWallet;
         }
@@ -85,15 +85,16 @@ namespace wallet
                 CreatedTime = DateTime.Now
             };
             wallet.ModifiedTime = DateTime.Now;
+
+            var tasks = new List<Task>();
             var tran = _redis.CreateTransaction();
-
-            _ = tran.StringSetAsync($"{WalletRedisKey.Wallet}:{wallet.WalletId}:{{{wallet.GetWalletIdSlot()}}}", JsonSerializer.Serialize(wallet));
-            _ = tran.StringSetAsync($"{WalletRedisKey.TransferRecord}:{transferRecord.TransferRecordId}", string.Empty);
-            _ = tran.ListLeftPushAsync($"{WalletRedisKey.TransferRecord}:{{{wallet.GetWalletIdSlot()}}}",
-                JsonSerializer.Serialize(transferRecord));
-
+            tasks.Add(tran.StringSetAsync($"{WalletRedisKey.Wallet}:{wallet.WalletId}:{{{wallet.GetWalletIdSlot()}}}", JsonSerializer.Serialize(wallet)));
+            tasks.Add(tran.StringSetAsync($"{WalletRedisKey.TransferRecord}:{transferRecord.TransferRecordId}", JsonSerializer.Serialize(transferRecord)));
+            tasks.Add(tran.ListLeftPushAsync($"{WalletRedisKey.TransferRecord}:{{{wallet.GetWalletIdSlot()}}}",
+                JsonSerializer.Serialize(transferRecord)));
             var result = await tran.ExecuteAsync();
             if (!result) throw new Exception("Redis Execute Fail!");
+            await Task.WhenAll(tasks);
 
             return transferRecord;
         }
@@ -125,6 +126,40 @@ namespace wallet
             return wallet;
         }
 
+        public async Task<wallet.model.TransferRecord> GetTransferRecord(Guid transferRecordId)
+        {
+            var inQueueValue = await _redis.StringGetAsync($"{WalletRedisKey.TransferRecord}:{transferRecordId}");
+            if (inQueueValue.HasValue) return JsonSerializer.Deserialize<TransferRecord>(inQueueValue);
+
+            var inDatabaseCacheValue = await _redis.StringGetAsync($"{WalletRedisKey.TransferRecordDatabaseCache}:{transferRecordId}");
+            if (inQueueValue.HasValue) return JsonSerializer.Deserialize<TransferRecord>(inDatabaseCacheValue);
+
+            var transferRecordCollection =
+                _walletDatabase.GetCollection<wallet.model.mongo.TransferRecord>("TransferRecord");
+            var transferRecordFilter =
+                Builders<wallet.model.mongo.TransferRecord>.Filter.Eq(t => t.TransferRecordId,
+                    transferRecordId.ToString());
+            var bsonTransferRecordCursor = await transferRecordCollection.FindAsync(transferRecordFilter);
+
+            var bsonTransferRecord = await bsonTransferRecordCursor.FirstOrDefaultAsync();
+            if (bsonTransferRecord == default) throw new Exception("TransferRecord NotFound!");
+
+            var transferRecord = new TransferRecord()
+            {
+                TransferRecordId = Guid.Parse(bsonTransferRecord.TransferRecordId),
+                WalletId = Guid.Parse(bsonTransferRecord.WalletId),
+                BeforeAmount = bsonTransferRecord.BeforeAmount,
+                AfterAmount = bsonTransferRecord.AfterAmount,
+                Amount = bsonTransferRecord.Amount,
+                CreatedTime = bsonTransferRecord.CreatedTime
+            };
+            _ = _redis.StringSetAsync($"{WalletRedisKey.TransferRecordDatabaseCache}:{bsonTransferRecord.TransferRecordId}"
+                , JsonSerializer.Serialize(transferRecord)
+                , TimeSpan.FromMinutes(10));
+
+            return transferRecord;
+        }
+
         /// <summary>
         /// 檢查轉帳ID是否存在
         /// </summary>
@@ -135,8 +170,8 @@ namespace wallet
             var inQueue = await _redis.KeyExistsAsync($"{WalletRedisKey.TransferRecord}:{transferId}");
             if (inQueue) return true;
 
-            var inDatabase = await _redis.KeyExistsAsync($"{WalletRedisKey.TransferRecord}:{transferId}:InDataBase");
-            if (inDatabase) return true;
+            var inDatabaseCache = await _redis.KeyExistsAsync($"{WalletRedisKey.TransferRecordDatabaseCache}:{transferId}");
+            if (inDatabaseCache) return true;
 
             var transferRecordCollection =
                 _walletDatabase.GetCollection<wallet.model.mongo.TransferRecord>("TransferRecord");
@@ -149,8 +184,18 @@ namespace wallet
             if (bsonTransferRecord == default)
                 return false;
 
-            _ = _redis.StringSetAsync($"{WalletRedisKey.TransferRecord}:{bsonTransferRecord.TransferRecordId}:InDataBase",
-                string.Empty, TimeSpan.FromMinutes(10));
+            var transferRecord = new TransferRecord()
+            {
+                TransferRecordId = Guid.Parse(bsonTransferRecord.TransferRecordId),
+                WalletId = Guid.Parse(bsonTransferRecord.WalletId),
+                BeforeAmount = bsonTransferRecord.BeforeAmount,
+                AfterAmount = bsonTransferRecord.AfterAmount,
+                Amount = bsonTransferRecord.Amount,
+                CreatedTime = bsonTransferRecord.CreatedTime
+            };
+            _ = _redis.StringSetAsync($"{WalletRedisKey.TransferRecordDatabaseCache}:{bsonTransferRecord.TransferRecordId}"
+                , JsonSerializer.Serialize(transferRecord)
+                , TimeSpan.FromMinutes(10));
 
             return true;
         }
